@@ -1,0 +1,32 @@
+﻿<Window x:Class="Telhai.DotNet.PlayerProject.Settings"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Telhai.DotNet.PlayerProject"
+        mc:Ignorable="d"
+            Title="Settings" Height="300" Width="400"
+        Background="#333" Foreground="White" WindowStartupLocation="CenterScreen">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Music Folders to Scan" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"/>
+
+        <ListBox x:Name="lstFolders" Grid.Row="1" Background="#222" Foreground="#DDD" Margin="0,0,0,10"/>
+
+        <StackPanel Grid.Row="2">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
+                <Button Name="BtnAddFolder" Content="Add Folder" Click="BtnAddFolder_Click"  Width="80" Margin="5"/>
+                <Button Name="BtnRemoveFolder" Content="Remove" Click="BtnRemoveFolder_Click"  Width="80" Margin="5"/>
+            </StackPanel>
+
+            <Button Name="BtnScan" Content="SCAN NOW" Click="BtnScan_Click"
+                    Height="30" Background="#007ACC" Foreground="White" FontWeight="Bold"/>
+        </StackPanel>
+    </Grid>
+
+</Window>
