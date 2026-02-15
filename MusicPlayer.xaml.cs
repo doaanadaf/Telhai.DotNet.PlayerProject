@@ -495,6 +495,7 @@ namespace Telhai.DotNet.PlayerProject
             settingsWin.ShowDialog();
         }
 
+
         private void SettingsWin_OnScanCompleted(List<MusicTrack> newTracksEventData)
         {
             foreach (var track in newTracksEventData)
