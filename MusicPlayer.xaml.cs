@@ -1,17 +1,20 @@
 ﻿using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Telhai.DotNet.PlayerProject.Services;
 
 namespace Telhai.DotNet.PlayerProject
 {
-    /// <summary>
-    /// Interaction logic for MusicPlayer.xaml
-    /// </summary>
     public partial class MusicPlayer : Window
     {
         private MediaPlayer mediaPlayer = new MediaPlayer();
@@ -20,17 +23,42 @@ namespace Telhai.DotNet.PlayerProject
         private bool isDragging = false;
         private const string FILE_NAME = "library.json";
 
+        // iTunes + Cancellation
+        private readonly IItunesService _itunesService = new ItunesService();
+        private CancellationTokenSource? _cts;
+        private readonly System.Net.Http.HttpClient _http = new System.Net.Http.HttpClient();
+
+        private MusicTrack? _currentTrack = null;
+
         public MusicPlayer()
         {
-            //--init all Hardcoded xaml into Elements Tree
             InitializeComponent();
+
+            // ==== DEBUG AUDIO EVENTS (to understand why it doesn't play) ====
+            mediaPlayer.MediaFailed += (s, e) =>
+            {
+                MessageBox.Show("MediaFailed: " + (e.ErrorException?.Message ?? "Unknown error"));
+            };
+
+            mediaPlayer.MediaOpened += (s, e) =>
+            {
+                // Optional: you can show this to verify open succeeded
+                // MessageBox.Show("MediaOpened");
+            };
+            // ===============================================================
 
             timer.Interval = TimeSpan.FromMilliseconds(500);
             timer.Tick += new EventHandler(Timer_Tick);
 
             this.Loaded += MusicPlayer_Loaded;
-            // this.MouseDoubleClick += MusicPlayer_MouseDoubleClick;
-            // this.MouseDoubleClick += new MouseButtonEventHandler(MusicPlayer_MouseDoubleClick);
+
+            // Default UI
+            SetDefaultCover();
+            txtMetaTitle.Text = "-";
+            txtMetaArtist.Text = "-";
+            txtMetaAlbum.Text = "-";
+            txtLocalPath.Text = "-";
+            txtApiError.Text = "";
         }
 
         private void MusicPlayer_Loaded(object sender, RoutedEventArgs e)
@@ -38,10 +66,8 @@ namespace Telhai.DotNet.PlayerProject
             this.LoadLibrary();
         }
 
-
         private void Timer_Tick(object? sender, EventArgs e)
         {
-            // Update slider ONLY if music is loaded AND user is NOT holding the handle
             if (mediaPlayer.Source != null && mediaPlayer.NaturalDuration.HasTimeSpan && !isDragging)
             {
                 sliderProgress.Maximum = mediaPlayer.NaturalDuration.TimeSpan.TotalSeconds;
@@ -49,30 +75,57 @@ namespace Telhai.DotNet.PlayerProject
             }
         }
 
-        // --- EMPTY PLACEHOLDERS TO MAKE IT BUILD ---
-        private void BtnPlay_Click(object sender, RoutedEventArgs e)
+        // PLAY: אם יש שיר נבחר -> נגן אותו
+        private async void BtnPlay_Click(object sender, RoutedEventArgs e)
         {
-            //if (sender is Button btn)
-            //{
-            //    btn.Background = Brushes.LightGreen;
-            //}
-            
+            if (lstLibrary.SelectedItem is MusicTrack track)
+            {
+                if (_currentTrack == null || _currentTrack.FilePath != track.FilePath || mediaPlayer.Source == null)
+                {
+                    await StartSongAndFetchMetadataAsync(track);
+                    return;
+                }
+            }
 
-            mediaPlayer.Play();
-            timer.Start();
-            txtStatus.Text = "Playing";
+            try
+            {
+                mediaPlayer.Volume = sliderVolume.Value;
+                mediaPlayer.Play();
+                timer.Start();
+                txtStatus.Text = "Playing";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Play error: " + ex.Message);
+            }
         }
+
         private void BtnPause_Click(object sender, RoutedEventArgs e)
         {
-            mediaPlayer.Pause();
-            txtStatus.Text = "Paused";
+            try
+            {
+                mediaPlayer.Pause();
+                txtStatus.Text = "Paused";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Pause error: " + ex.Message);
+            }
         }
+
         private void BtnStop_Click(object sender, RoutedEventArgs e)
         {
-            mediaPlayer.Stop();
-            timer.Stop();
-            sliderProgress.Value = 0;
-            txtStatus.Text = "Stopped";
+            try
+            {
+                mediaPlayer.Stop();
+                timer.Stop();
+                sliderProgress.Value = 0;
+                txtStatus.Text = "Stopped";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Stop error: " + ex.Message);
+            }
         }
 
         private void SliderVolume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -82,35 +135,35 @@ namespace Telhai.DotNet.PlayerProject
 
         private void Slider_DragStarted(object sender, MouseButtonEventArgs e)
         {
-            isDragging = true; // Stop timer updates
+            isDragging = true;
         }
 
         private void Slider_DragCompleted(object sender, MouseButtonEventArgs e)
         {
-            isDragging = false; // Resume timer updates
-            mediaPlayer.Position = TimeSpan.FromSeconds(sliderProgress.Value);
+            isDragging = false;
+            try
+            {
+                mediaPlayer.Position = TimeSpan.FromSeconds(sliderProgress.Value);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Seek error: " + ex.Message);
+            }
         }
-
 
         private void BtnAdd_Click(object sender, RoutedEventArgs e)
         {
-            //File Dialog to choose file from system
             OpenFileDialog ofd = new OpenFileDialog();
             ofd.Multiselect = true;
             ofd.Filter = "MP3 Files|*.mp3";
 
-            //User Confirmed
             if (ofd.ShowDialog() == true)
             {
-                //iterate all files selected as tring
                 foreach (string file in ofd.FileNames)
                 {
-                    //Create Object for each filr
                     MusicTrack track = new MusicTrack
                     {
-                        //Only file name
                         Title = System.IO.Path.GetFileNameWithoutExtension(file),
-                        //full path
                         FilePath = file
                     };
                     library.Add(track);
@@ -122,8 +175,6 @@ namespace Telhai.DotNet.PlayerProject
 
         private void UpdateLibraryUI()
         {
-            //Take All library list as Source to the listbox
-            //diaplay tostring for inner object whithin list
             lstLibrary.ItemsSource = null;
             lstLibrary.ItemsSource = library;
         }
@@ -139,11 +190,8 @@ namespace Telhai.DotNet.PlayerProject
         {
             if (File.Exists(FILE_NAME))
             {
-                //read File
                 string json = File.ReadAllText(FILE_NAME);
-                //Create List Of MusicTrack from json
                 library = JsonSerializer.Deserialize<List<MusicTrack>>(json) ?? new List<MusicTrack>();
-                //Show All loaded MusicTrack in List Box
                 UpdateLibraryUI();
             }
         }
@@ -158,35 +206,36 @@ namespace Telhai.DotNet.PlayerProject
             }
         }
 
-        private void LstLibrary_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        // לחיצה אחת: רק מציגים שם + מסלול (בלי API)
+        private void LstLibrary_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             if (lstLibrary.SelectedItem is MusicTrack track)
             {
-                mediaPlayer.Open(new Uri(track.FilePath));
-                mediaPlayer.Play();
-                timer.Start();
                 txtCurrentSong.Text = track.Title;
-                txtStatus.Text = "Playing";
+                txtLocalPath.Text = track.FilePath;
+            }
+        }
+
+        // לחיצה כפולה: ניגון + API במקביל
+        private async void LstLibrary_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (lstLibrary.SelectedItem is MusicTrack track)
+            {
+                await StartSongAndFetchMetadataAsync(track);
             }
         }
 
         private void BtnSettings_Click(object sender, RoutedEventArgs e)
         {
-            //1) Create Settings Window Instance
             Settings settingsWin = new Settings();
-
-            //2) Subscribe/register to OnScanCompleted Event
             settingsWin.OnScanCompleted += SettingsWin_OnScanCompleted;
-
             settingsWin.ShowDialog();
-
         }
 
         private void SettingsWin_OnScanCompleted(List<MusicTrack> newTracksEventData)
         {
             foreach (var track in newTracksEventData)
             {
-                // Prevent duplicates based on FilePath
                 if (!library.Any(x => x.FilePath == track.FilePath))
                 {
                     library.Add(track);
@@ -196,14 +245,132 @@ namespace Telhai.DotNet.PlayerProject
             UpdateLibraryUI();
             SaveLibrary();
         }
+
+        // -----------------------------
+        // iTunes metadata + cover logic
+        // -----------------------------
+
+        private static string BuildSearchQueryFromFileName(string title)
+        {
+            return title.Replace("-", " ").Replace("_", " ").Trim();
+        }
+
+        private void SetDefaultCover()
+        {
+            try
+            {
+                imgCover.Source = new BitmapImage(new Uri("pack://application:,,,/Resources/default_cover.png"));
+            }
+            catch
+            {
+                imgCover.Source = null;
+            }
+        }
+
+        private async Task LoadCoverAsync(string url, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                SetDefaultCover();
+                return;
+            }
+
+            var bytes = await _http.GetByteArrayAsync(url, ct);
+            ct.ThrowIfCancellationRequested();
+
+            using var ms = new MemoryStream(bytes);
+
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.StreamSource = ms;
+            bmp.EndInit();
+            bmp.Freeze();
+
+            imgCover.Source = bmp;
+        }
+
+        private async Task StartSongAndFetchMetadataAsync(MusicTrack track)
+        {
+            // 1) ניגון מיידי
+            _currentTrack = track;
+
+            try
+            {
+                // Important: stop previous playback before opening a new one
+                mediaPlayer.Stop();
+
+                mediaPlayer.Volume = sliderVolume.Value;
+
+                // Ensure file exists
+                if (!File.Exists(track.FilePath))
+                {
+                    MessageBox.Show("File not found:\n" + track.FilePath);
+                    return;
+                }
+
+                mediaPlayer.Open(new Uri(track.FilePath, UriKind.Absolute));
+                mediaPlayer.Play();
+                timer.Start();
+
+                txtStatus.Text = "Playing";
+                txtCurrentSong.Text = track.Title;
+                txtLocalPath.Text = track.FilePath;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Playback error: " + ex.Message);
+                txtStatus.Text = "Playback error";
+            }
+
+            // Reset UI meta
+            txtApiError.Text = "";
+            txtMetaTitle.Text = track.Title;
+            txtMetaArtist.Text = "-";
+            txtMetaAlbum.Text = "-";
+            SetDefaultCover();
+
+            // 2) ביטול קריאה קודמת
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
+            var ct = _cts.Token;
+
+            var query = BuildSearchQueryFromFileName(track.Title);
+
+            try
+            {
+                // 3) קריאת API במקביל לניגון
+                var meta = await _itunesService.SearchAsync(query, ct);
+                if (ct.IsCancellationRequested) return;
+
+                if (meta == null)
+                {
+                    txtMetaTitle.Text = track.Title;
+                    txtMetaArtist.Text = "-";
+                    txtMetaAlbum.Text = "-";
+                    SetDefaultCover();
+                    return;
+                }
+
+                txtMetaTitle.Text = string.IsNullOrWhiteSpace(meta.TrackName) ? track.Title : meta.TrackName;
+                txtMetaArtist.Text = string.IsNullOrWhiteSpace(meta.ArtistName) ? "-" : meta.ArtistName;
+                txtMetaAlbum.Text = string.IsNullOrWhiteSpace(meta.CollectionName) ? "-" : meta.CollectionName;
+
+                await LoadCoverAsync(meta.ArtworkUrl100, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                // תקין
+            }
+            catch
+            {
+                txtApiError.Text = $"API error. Local file:\n{track.Title}\n{track.FilePath}";
+                txtMetaTitle.Text = track.Title;
+                txtMetaArtist.Text = "-";
+                txtMetaAlbum.Text = "-";
+                SetDefaultCover();
+            }
+        }
     }
-
-
-
-    //private void MusicPlayer_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-    //{
-    //    MainWindow p = new MainWindow();
-    //    p.Title = "YYYYY";
-    //    p.Show();
-    //}
 }

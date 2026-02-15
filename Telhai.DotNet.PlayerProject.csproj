@@ -8,4 +8,12 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
+  <ItemGroup>
+    <None Remove="Resources\default_cover.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\default_cover.png" />
+  </ItemGroup>
+
 </Project>
