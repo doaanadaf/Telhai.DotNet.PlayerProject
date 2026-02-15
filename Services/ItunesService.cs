@@ -9,69 +9,36 @@ namespace Telhai.DotNet.PlayerProject.Services
 {
     public class ItunesService : IItunesService
     {
-        private readonly HttpClient _http = new HttpClient();
+        // מומלץ HttpClient אחד לכל האפליקציה
+        private static readonly HttpClient _http = new HttpClient();
 
         public async Task<SongMetadata?> SearchAsync(string query, CancellationToken ct)
         {
-            try
+            var url =
+                $"https://itunes.apple.com/search?term={Uri.EscapeDataString(query)}&entity=song&limit=1";
+
+            using var resp = await _http.GetAsync(url, ct);
+            resp.EnsureSuccessStatusCode();
+
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty("results", out var results) ||
+                results.ValueKind != JsonValueKind.Array ||
+                results.GetArrayLength() == 0)
             {
-                // בניית כתובת החיפוש ל-iTunes API
-                var url = $"https://itunes.apple.com/search?term={Uri.EscapeDataString(query)}&entity=song&limit=1";
-
-                // קריאה אסינכרונית ל-API
-                using var response = await _http.GetAsync(url, ct);
-
-                // בדיקה שהקריאה הצליחה
-                response.EnsureSuccessStatusCode();
-
-                // קריאת התוכן כטקסט
-                var json = await response.Content.ReadAsStringAsync(ct);
-
-                // פירוק JSON
-                using var doc = JsonDocument.Parse(json);
-
-                var results = doc.RootElement.GetProperty("results");
-
-                // אם אין תוצאות
-                if (results.GetArrayLength() == 0)
-                    return null;
-
-                var r0 = results[0];
-
-                // יצירת אובייקט SongMetadata
-                return new SongMetadata
-                {
-                    TrackName =
-                        r0.TryGetProperty("trackName", out var track)
-                        ? track.GetString() ?? ""
-                        : "",
-
-                    ArtistName =
-                        r0.TryGetProperty("artistName", out var artist)
-                        ? artist.GetString() ?? ""
-                        : "",
-
-                    CollectionName =
-                        r0.TryGetProperty("collectionName", out var collection)
-                        ? collection.GetString() ?? ""
-                        : "",
-
-                    ArtworkUrl100 =
-                        r0.TryGetProperty("artworkUrl100", out var artwork)
-                        ? artwork.GetString() ?? ""
-                        : ""
-                };
-            }
-            catch (OperationCanceledException)
-            {
-                // הקריאה בוטלה (CancellationToken)
                 return null;
             }
-            catch (Exception)
+
+            var r0 = results[0];
+
+            return new SongMetadata
             {
-                // שגיאה כללית
-                return null;
-            }
+                TrackName = r0.TryGetProperty("trackName", out var t) ? t.GetString() ?? "" : "",
+                ArtistName = r0.TryGetProperty("artistName", out var a) ? a.GetString() ?? "" : "",
+                CollectionName = r0.TryGetProperty("collectionName", out var c) ? c.GetString() ?? "" : "",
+                ArtworkUrl100 = r0.TryGetProperty("artworkUrl100", out var art) ? art.GetString() ?? "" : ""
+            };
         }
     }
 }

@@ -13,7 +13,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="Resources\default_cover.png" />
+    <Resource Include="Resources\default_cover.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Models\SongMetadata.cs">
+      <CopyToOutputDirectory></CopyToOutputDirectory>
+    </Compile>
   </ItemGroup>
 
 </Project>
