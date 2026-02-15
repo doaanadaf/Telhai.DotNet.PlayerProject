@@ -91,6 +91,7 @@
             <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0" HorizontalAlignment="Left">
                 <Button Content="Add MP3" Click="BtnAdd_Click" Margin="5" Width="90"/>
                 <Button Content="Remove" Click="BtnRemove_Click" Margin="5" Width="90"/>
+                <Button Content="Edit" Click="BtnEdit_Click" Margin="5" Width="90"/>
                 <Button Name="BtnSettings" Content="Settings" Click="BtnSettings_Click" Margin="5" Width="90"
                         Background="#555" Foreground="White"/>
             </StackPanel>
